@@ -1,7 +1,6 @@
 ###############################################################################
-# Dev environment – root configuration
-# Creates an air-gapped VPC and connects it to the shared services via TGW.
-# Workloads inside this VPC consume the shared NLB endpoint (PrivateLink).
+# Test environment – root configuration
+# Mirror of dev/main.tf with test-specific CIDR ranges.
 ###############################################################################
 
 terraform {
@@ -14,7 +13,7 @@ terraform {
   }
   # backend "s3" {
   #   bucket         = "my-tf-state-bucket"
-  #   key            = "dev/terraform.tfstate"
+  #   key            = "test/terraform.tfstate"
   #   region         = "eu-west-2"
   #   dynamodb_table = "tf-state-lock"
   # }
@@ -30,12 +29,12 @@ provider "aws" {
 locals {
   common_tags = {
     Project     = var.project
-    Environment = "dev"
+    Environment = "test"
     ManagedBy   = "terraform"
   }
 }
 
-# ── Read shared state (Transit Gateway ID, shared VPC CIDR, etc.) ─────────────
+# ── Read shared state ─────────────────────────────────────────────────────────
 
 data "terraform_remote_state" "shared" {
   backend = "s3"
@@ -46,53 +45,50 @@ data "terraform_remote_state" "shared" {
   }
 }
 
-# ── Dev VPC ───────────────────────────────────────────────────────────────────
+# ── Test VPC ──────────────────────────────────────────────────────────────────
 
-module "dev_vpc" {
+module "test_vpc" {
   source = "../modules/networking"
 
-  name_prefix          = "${var.project}-dev"
-  vpc_cidr             = var.dev_vpc_cidr
-  private_subnet_cidrs = var.dev_private_subnet_cidrs
+  name_prefix          = "${var.project}-test"
+  vpc_cidr             = var.test_vpc_cidr
+  private_subnet_cidrs = var.test_private_subnet_cidrs
   availability_zones   = var.availability_zones
   aws_region           = var.aws_region
   tags                 = local.common_tags
 }
 
-# ── Attach Dev VPC to the shared Transit Gateway ──────────────────────────────
-# NOTE: We reuse the transit_gateway module only to add routes; the TGW itself
-#       lives in shared/ and is referenced via remote state.
+# ── Attach Test VPC to the shared Transit Gateway ─────────────────────────────
 
-resource "aws_ec2_transit_gateway_vpc_attachment" "dev" {
+resource "aws_ec2_transit_gateway_vpc_attachment" "test" {
   transit_gateway_id = data.terraform_remote_state.shared.outputs.transit_gateway_id
-  vpc_id             = module.dev_vpc.vpc_id
-  subnet_ids         = module.dev_vpc.private_subnet_ids
+  vpc_id             = module.test_vpc.vpc_id
+  subnet_ids         = module.test_vpc.private_subnet_ids
 
   dns_support                                     = "enable"
   transit_gateway_default_route_table_association = true
   transit_gateway_default_route_table_propagation = true
 
-  tags = merge(local.common_tags, { Name = "${var.project}-dev-tgw-attach" })
+  tags = merge(local.common_tags, { Name = "${var.project}-test-tgw-attach" })
 }
 
-# Route from dev to shared VPC via TGW
 resource "aws_route" "to_shared" {
-  route_table_id         = module.dev_vpc.private_route_table_id
+  route_table_id         = module.test_vpc.private_route_table_id
   destination_cidr_block = data.terraform_remote_state.shared.outputs.shared_vpc_cidr
   transit_gateway_id     = data.terraform_remote_state.shared.outputs.transit_gateway_id
 
-  depends_on = [aws_ec2_transit_gateway_vpc_attachment.dev]
+  depends_on = [aws_ec2_transit_gateway_vpc_attachment.test]
 }
 
 # ── VPC Endpoint to reach the shared NLB via PrivateLink ──────────────────────
 
 resource "aws_vpc_endpoint" "shared_nlb" {
-  vpc_id              = module.dev_vpc.vpc_id
+  vpc_id              = module.test_vpc.vpc_id
   service_name        = data.terraform_remote_state.shared.outputs.nlb_endpoint_service_name
   vpc_endpoint_type   = "Interface"
-  subnet_ids          = module.dev_vpc.private_subnet_ids
-  security_group_ids  = [module.dev_vpc.vpc_endpoint_sg_id]
+  subnet_ids          = module.test_vpc.private_subnet_ids
+  security_group_ids  = [module.test_vpc.vpc_endpoint_sg_id]
   private_dns_enabled = false
 
-  tags = merge(local.common_tags, { Name = "${var.project}-dev-shared-nlb-vpce" })
+  tags = merge(local.common_tags, { Name = "${var.project}-test-shared-nlb-vpce" })
 }
