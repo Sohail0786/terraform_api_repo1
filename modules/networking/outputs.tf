@@ -23,6 +23,11 @@ output "vpc_endpoint_sg_id" {
   value       = aws_security_group.vpc_endpoint.id
 }
 
+output "execute_api_vpce_id" {
+  description = "ID of the execute-api Interface VPC Endpoint"
+  value       = aws_vpc_endpoint.interface["com.amazonaws.${var.aws_region}.execute-api"].id
+}
+
 output "s3_vpce_id" {
   description = "S3 Gateway VPC Endpoint ID"
   value       = aws_vpc_endpoint.s3.id

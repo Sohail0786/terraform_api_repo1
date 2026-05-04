@@ -136,7 +136,7 @@ module "api_gateway" {
   name_prefix = "${var.project}-shared"
 
   # The execute-api interface endpoint created by the networking module
-  vpc_endpoint_ids     = [module.shared_vpc.vpc_endpoint_sg_id]
+  vpc_endpoint_ids     = [module.shared_vpc.execute_api_vpce_id]
   lambda_invoke_arn    = module.lambda.invoke_arn
   lambda_function_name = module.lambda.function_name
   stage_name           = "v1"
