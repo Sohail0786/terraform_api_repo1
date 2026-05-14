@@ -204,3 +204,64 @@ terraform -chdir=shared apply \
 - **Lambda** runs in VPC mode with no public IP
 - **S3 objects** encrypted with KMS (bucket key enabled to reduce KMS costs)
 - **DynamoDB** has point-in-time recovery and server-side encryption enabled
+
+---
+
+## Secure Outbound API Pattern (Private API Gateway -> Public API Gateway)
+
+Use this pattern when workloads in a private, internet-isolated VPC need controlled
+access to an external public API endpoint without adding an IGW/NAT path in the VPC.
+
+### Architecture Diagram
+
+```
++-------------------------------+      +---------------------------+      +------------------------------+
+|   Private Workloads in VPC    |      |   Private API Gateway     |      |       Public API Gateway     |
+| (EC2/Lambda in Private Subnet)| -->  |  (VPC Endpoint, no IGW)   | -->  |  (Internet Access Enabled)   |
++-------------------------------+      +---------------------------+      +------------------------------+
+                                                                                   |
+                                                                                   v
+                                                                       +--------------------------+
+                                                                       |   External Public API    |
+                                                                       +--------------------------+
+```
+
+### Step-by-Step
+
+1. **Set up private VPC**
+   - Create a VPC with private subnets only.
+   - Do not attach an Internet Gateway.
+
+2. **Configure private API Gateway**
+   - Deploy API Gateway as `PRIVATE`.
+   - Attach an Interface VPC endpoint (`execute-api`).
+   - Restrict access with IAM/resource policies.
+
+3. **Deploy public API Gateway**
+   - Create a separate public API Gateway for controlled internet egress.
+   - Limit routes/integrations to only approved external API destinations.
+
+4. **Integrate private API Gateway -> public API Gateway**
+   - Configure private API integration to call the public API Gateway endpoint.
+   - Keep private workloads calling only the private API endpoint.
+
+5. **Integrate public API Gateway -> external API**
+   - Configure public API integration to forward to the real external API URL.
+   - Apply authentication, request validation, and transformation as required.
+
+6. **Secure all edges**
+   - Private API Gateway resource policy: allow only expected VPCE/VPC sources.
+   - Public API Gateway controls: source restrictions (where feasible), API keys,
+     WAF, throttling, and detailed access logging.
+   - Enable CloudWatch logs and VPC Flow Logs for auditability.
+
+7. **Test and monitor**
+   - Validate end-to-end flow:
+     `Private workload -> Private API GW -> Public API GW -> External API`.
+   - Alert on unauthorized access patterns and integration failures.
+
+### Benefits
+
+- Preserves VPC internet isolation (no direct internet path from workloads)
+- Centralizes and audits outbound API access
+- Adds layered controls (resource policy, auth, WAF, throttling, logging)
