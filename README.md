@@ -93,7 +93,7 @@ Useful when you need repeatable automation.
 | Table | `| Col | Col |` format | Complex tables may need simplification |
 | Image | `![alt](assets/image.png)` | Use relative paths |
 | Link | `[text](https://example.com)` | Prefer descriptive link text |
-| Code block | Three backticks + language identifier + code + closing three backticks | Specify language for syntax highlighting |
+| Code block | Fenced block: \`\`\`language, then code, then \`\`\` | Specify language for syntax highlighting |
 | Blockquote | `> quoted text` | Useful for notes/warnings |
 
 ---
