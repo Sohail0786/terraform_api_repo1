@@ -90,10 +90,10 @@ Useful when you need repeatable automation.
 | Underline | _No native Markdown_ | Prefer emphasis or raw HTML: `<u>text</u>` |
 | Bulleted list | `- item` | Use consistent bullet style |
 | Numbered list | `1. item` | Markdown auto-numbers |
-| Table | `&#124; Col &#124; Col &#124;` format | Complex tables may need simplification |
+| Table | `| Col | Col |` format | Complex tables may need simplification |
 | Image | `![alt](assets/image.png)` | Use relative paths |
 | Link | `[text](https://example.com)` | Prefer descriptive link text |
-| Code block | Fenced block: three backticks + language (example: bash) | Specify language for syntax highlighting |
+| Code block | Fenced block: <code>```language</code> + code + <code>```</code> | Specify language for syntax highlighting |
 | Blockquote | `> quoted text` | Useful for notes/warnings |
 
 ---
