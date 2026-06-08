@@ -93,7 +93,7 @@ Useful when you need repeatable automation.
 | Table | `| Col | Col |` format | Complex tables may need simplification |
 | Image | `![alt](assets/image.png)` | Use relative paths |
 | Link | `[text](https://example.com)` | Prefer descriptive link text |
-| Code block | Fenced block: \`\`\`language, then code, then \`\`\` | Specify language for syntax highlighting |
+| Code block | Use fenced code blocks with a language tag (see example in section 5) | Specify language for syntax highlighting |
 | Blockquote | `> quoted text` | Useful for notes/warnings |
 
 ---
@@ -122,22 +122,18 @@ Useful when you need repeatable automation.
 
 ### After (`README.md`)
 
-````markdown
+```text
 # Project Setup Guide
 
 ## Installation Steps
 
 1. Install dependencies:
-   ```bash
-   npm install
-   ```
+   - `npm install`
 2. Start the app:
-   ```bash
-   npm run dev
-   ```
+   - `npm run dev`
 
 ![Setup Screen](assets/setup-screen.png)
-````
+```
 
 ---
 
