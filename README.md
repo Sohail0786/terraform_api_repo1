@@ -93,7 +93,7 @@ Useful when you need repeatable automation.
 | Table | `| Col | Col |` format | Complex tables may need simplification |
 | Image | `![alt](assets/image.png)` | Use relative paths |
 | Link | `[text](https://example.com)` | Prefer descriptive link text |
-| Code block | Fenced block: <code>```language</code> + code + <code>```</code> | Specify language for syntax highlighting |
+| Code block | Three backticks + language identifier + code + closing three backticks | Specify language for syntax highlighting |
 | Blockquote | `> quoted text` | Useful for notes/warnings |
 
 ---
@@ -174,7 +174,7 @@ Useful when you need repeatable automation.
 
 ### Issue: Code blocks lost formatting
 - Re-wrap code in fenced blocks:
-  ````markdown
+  ````
   ```bash
   your command
   ```
