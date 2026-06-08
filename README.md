@@ -1,206 +1,191 @@
-# terraform_api_repo1
+# DOCX to README.md Conversion Guide
 
-Terraform modules and environment configs for a **shared-services architecture**
-that lets **Dev** and **Test** environments consume common AWS resources through
-an **air-gapped VPC** (no internet) using Transit Gateway, PrivateLink, NLB,
-Private API Gateway, Lambda, S3, DynamoDB, and Nginx.
+This guide explains practical ways to convert Microsoft Word (`.docx`) documents into clean `README.md` files.
 
----
+## 1) Overview
 
-## Architecture Diagram
+`README.md` is usually the first file people read in a repository. It is rendered by platforms like GitHub, making it ideal for:
+- Project overviews
+- Setup instructions
+- Usage examples
+- Contribution notes
 
-```
- +--------------------------------------------------------------------------+
- |                         AWS Account (eu-west-2)                          |
- |                                                                          |
- |  +───────────────────────+       +────────────────────────────────────+  |
- |  |     Dev VPC           |       |        Shared Services VPC         |  |
- |  |  10.1.0.0/16          |       |        10.0.0.0/16                 |  |
- |  |  (air-gapped, no IGW) |       |  (air-gapped, no IGW)              |  |
- |  |                       |       |                                    |  |
- |  |  +─────────────────+  |       |  +─────────────────────────────+   |  |
- |  |  | Private Subnets |  |       |  |    Network Load Balancer     |   |  |
- |  |  | 10.1.1.0/24     |  |       |  |  (internal, TCP:80)         |   |  |
- |  |  | 10.1.2.0/24     |  |       |  +──────────────┬──────────────+   |  |
- |  |  |                 |  |       |                 |                   |  |
- |  |  |  Dev Workloads  |  |       |                 v                   |  |
- |  |  |  (EC2/ECS/etc)  |  |       |  +─────────────────────────────+   |  |
- |  |  +────────┬────────+  |       |  |   Nginx Proxy ASG (EC2)     |   |  |
- |  |           |           |       |  |   port 80 ──> API GW URL    |   |  |
- |  |  +────────v────────+  |       |  +──────────────┬──────────────+   |  |
- |  |  | VPC Endpoints   |  |       |                 |                   |  |
- |  |  |  · execute-api  |  |       |                 v                   |  |
- |  |  |  · lambda       |  |       |  +─────────────────────────────+   |  |
- |  |  |  · S3 (Gateway) |  |       |  |  Private API Gateway (REST) |   |  |
- |  |  |  · DynamoDB(GW) |  |       |  |  endpoint type: PRIVATE     |   |  |
- |  |  +────────┬────────+  |       |  +──────────────┬──────────────+   |  |
- |  +───────────|───────────+       |                 |                   |  |
- |              |                   |                 v                   |  |
- |   PrivateLink|VPC Endpoint       |  +─────────────────────────────+   |  |
- |   (NLB svc) <+──────────────────>+  |     Lambda Function          |   |  |
- |              |                   |  |  (python3.12, VPC-attached)  |   |  |
- |  +───────────|───────────+       |  +──────┬──────────┬────────────+   |  |
- |  |   Test VPC            |       |         |          |                |  |
- |  |   10.2.0.0/16         |       |         v          v                |  |
- |  |  (air-gapped, no IGW) |       |  +──────────+ +──────────────+     |  |
- |  |                       |       |  | DynamoDB | |  S3 Bucket   |     |  |
- |  |  +─────────────────+  |       |  |  Table   | | (versioned,  |     |  |
- |  |  | Private Subnets |  |       |  |(PAY/REQ) | |  encrypted)  |     |  |
- |  |  | 10.2.1.0/24     |  |       |  +──────────+ +──────────────+     |  |
- |  |  | 10.2.2.0/24     |  |       +────────────────────────────────────+  |
- |  |  |                 |  |                        ^                       |
- |  |  |  Test Workloads |  |                        |                       |
- |  |  +────────┬────────+  |       +────────────────+────────────────+      |
- |  |           |           |       |      Transit Gateway (TGW)      |      |
- |  |  +────────v────────+  |       |  auto-accept, default RT        |      |
- |  |  | VPC Endpoints   |<─+───────+  propagation enabled            |      |
- |  |  |  · execute-api  |  | attach+─────────────────────────────────+      |
- |  |  |  · S3 (Gateway) +──+──────>|  (Dev & Shared also attach here)|      |
- |  |  |  · DynamoDB(GW) |  |       +─────────────────────────────────+      |
- |  |  +─────────────────+  |                                                |
- |  |  PrivateLink VPC      |                                                |
- |  |  Endpoint (NLB svc)   |                                                |
- |  +───────────────────────+                                                |
- +--------------------------------------------------------------------------+
-```
+Why it matters:
+- Improves onboarding and discoverability
+- Keeps documentation version-controlled with code
+- Works well in code review and automation workflows
 
 ---
 
-## Data Flow (request lifecycle)
+## 2) Methods to Convert DOCX to Markdown
 
-```
-Dev or Test workload
-        |
-        |  1. App calls http://<shared-nlb-vpce-dns>/v1/item?pk=123
-        v
-  VPC Endpoint (Interface – PrivateLink consumer)  [dev/test VPC]
-        |
-        |  2. Traffic travels through PrivateLink (stays on AWS backbone,
-        |     never touches the internet or a NAT gateway)
-        v
-  NLB – Network Load Balancer  [shared VPC, internal]
-  (TCP:80, cross-zone enabled)
-        |
-        |  3. NLB selects a healthy Nginx EC2 target (round-robin)
-        v
-  Nginx Proxy  [EC2 in Auto Scaling Group, shared VPC]
-  (rewrites Host header, adds X-Forwarded-* headers)
-        |
-        |  4. Nginx proxies to private API Gateway DNS name
-        v
-  Private API Gateway  [shared VPC, execute-api VPC endpoint]
-  (resource policy: only allow sourceVpce == execute-api endpoint)
-        |
-        |  5. API GW validates policy -> invokes Lambda (AWS_PROXY)
-        v
-  Lambda Function  [VPC-attached, shared VPC private subnets]
-        |
-        +──> 6a. DynamoDB GetItem/PutItem/Query
-        |         via DynamoDB Gateway VPC Endpoint (free, no internet)
-        |                      |
-        |                      v
-        |              DynamoDB Table
-        |
-        +──> 6b. S3 GetObject/PutObject
-                  via S3 Gateway VPC Endpoint (free, no internet)
-                               |
-                               v
-                          S3 Bucket
+### Method A: Using Pandoc (recommended for technical docs)
 
-        |
-        |  7. Lambda returns JSON to API GW -> Nginx -> NLB
-        |     -> PrivateLink -> Dev/Test workload
-        v
-  200 OK { "pk": "123", "data": "..." }
-```
+Pandoc is a powerful command-line document converter.
+
+1. Install Pandoc:
+   - macOS: `brew install pandoc`
+   - Ubuntu/Debian: `sudo apt-get install pandoc`
+   - Windows: install from [pandoc.org](https://pandoc.org)
+2. Convert DOCX to Markdown:
+   ```bash
+   pandoc input.docx -t gfm -o README.md
+   ```
+3. Keep extracted media (images):
+   ```bash
+   pandoc input.docx -t gfm --extract-media=./assets -o README.md
+   ```
+4. Review and clean up heading levels, tables, and links.
+
+### Method B: Using Online Converters (quick, no install)
+
+Popular options: CloudConvert, Zamzar, Convertio.
+
+1. Open converter website.
+2. Upload `input.docx`.
+3. Choose output format as **Markdown** (or text and then adapt).
+4. Download the result.
+5. Rename to `README.md` and manually polish formatting.
+
+> Use caution for confidential documents when using online tools.
+
+### Method C: Using a Python Script
+
+Useful when you need repeatable automation.
+
+1. Install dependencies:
+   ```bash
+   pip install pypandoc
+   ```
+2. Example script:
+   ```python
+   import pypandoc
+
+   pypandoc.convert_file(
+       'input.docx',
+       'gfm',
+       outputfile='README.md',
+       extra_args=['--extract-media=./assets']
+   )
+   ```
+3. Run script and verify resulting Markdown.
+
+### Method D: Manual Conversion (best for high-quality final polish)
+
+1. Open DOCX and copy section-by-section.
+2. Rebuild structure in Markdown (`#`, `##`, lists, tables).
+3. Save images into an `assets/` folder and link relatively.
+4. Test rendering on GitHub preview.
+5. Keep line lengths and heading hierarchy consistent.
 
 ---
 
-## Shared Resources
+## 3) Common DOCX Elements & Markdown Equivalents
 
-| Resource | Why shared? | Isolation between envs |
+| DOCX Element | Markdown Equivalent | Notes |
 |---|---|---|
-| **Transit Gateway** | Single routing hub | Route tables per environment |
-| **NLB + PrivateLink** | Single stable ingress endpoint | PrivateLink per consumer VPC |
-| **Nginx Proxy** (ASG) | Protocol normalisation | n/a (stateless) |
-| **Private API Gateway** | Single API surface | Stage variables / paths |
-| **Lambda** | Business logic runs once | `ENVIRONMENT` env var |
-| **S3 Bucket** | Shared data store | Key prefix `dev/` vs `test/` |
-| **DynamoDB Table** | Shared state | Partition key prefix `dev#` vs `test#` |
+| Heading 1 / 2 / 3 | `#`, `##`, `###` | Keep hierarchy logical |
+| **Bold** | `**bold**` | Standard emphasis |
+| *Italic* | `*italic*` | Use for light emphasis |
+| Underline | _No native Markdown_ | Prefer emphasis or raw HTML: `<u>text</u>` |
+| Bulleted list | `- item` | Use consistent bullet style |
+| Numbered list | `1. item` | Markdown auto-numbers |
+| Table | `\| Col \| Col \|` format | Complex tables may need simplification |
+| Image | `![alt](assets/image.png)` | Use relative paths |
+| Link | `[text](https://example.com)` | Prefer descriptive link text |
+| Code block | ```` ```lang ... ``` ```` | Specify language for syntax highlighting |
+| Blockquote | `> quoted text` | Useful for notes/warnings |
 
 ---
 
-## Repository Layout
+## 4) Best Practices for Clean README Files
 
-```
-terraform_api_repo1/
-├── modules/
-│   ├── networking/       # VPC, private subnets, Interface + Gateway VPC endpoints
-│   ├── transit_gateway/  # TGW, VPC attachments, cross-VPC routes
-│   ├── nlb/              # Internal NLB + PrivateLink endpoint service
-│   ├── api_gateway/      # Private REST API Gateway + Lambda integration
-│   ├── lambda/           # Lambda function, IAM role, VPC security group
-│   ├── s3/               # S3 bucket with VPCE-only bucket policy + KMS
-│   ├── dynamodb/         # DynamoDB table with resource policy + PITR
-│   └── nginx_proxy/      # EC2 ASG (Amazon Linux 2023), Nginx Launch Template
-│
-├── shared/               # Shared services environment (apply first)
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   └── provider.tf
-│
-├── dev/                  # Dev VPC + TGW attachment + PrivateLink consumer
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   └── provider.tf
-│
-├── test/                 # Test VPC + TGW attachment + PrivateLink consumer
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   └── provider.tf
-│
-└── lambda/
-    ├── src/handler.py    # Python 3.12 Lambda handler (DynamoDB + S3 CRUD)
-    └── function.zip      # Deployment package (auto-generated)
-```
+- Start with a clear title and short project description.
+- Use a table of contents for long documents.
+- Keep headings consistent and avoid skipping heading levels.
+- Prefer short paragraphs and actionable bullet lists.
+- Use fenced code blocks with language tags.
+- Keep image paths relative (e.g., `assets/diagram.png`).
+- Validate links and remove Word-only artifacts (smart quotes, extra spacing).
+- Keep formatting simple for portability across Markdown renderers.
 
 ---
 
-## Deployment Order
+## 5) Example Conversion (DOCX → Markdown)
 
-```bash
-# 1. Bootstrap shared services (TGW, NLB, API GW, Lambda, S3, DynamoDB)
-terraform -chdir=shared init
-terraform -chdir=shared apply -var="aws_account_id=<ACCOUNT_ID>"
+### Before (DOCX content)
 
-# 2. Deploy dev VPC and attach to TGW
-terraform -chdir=dev init
-terraform -chdir=dev apply -var="state_bucket=<TF_STATE_BUCKET>"
+- Title: **Project Setup Guide**
+- Section heading: *Installation Steps*
+- Numbered steps with inline commands
+- Screenshot included
 
-# 3. Deploy test VPC and attach to TGW
-terraform -chdir=test init
-terraform -chdir=test apply -var="state_bucket=<TF_STATE_BUCKET>"
+### After (`README.md`)
 
-# 4. Re-apply shared to add dev/test VPCE IDs to S3 and DynamoDB policies
-terraform -chdir=shared apply \
-  -var="dev_s3_vpce_id=$(terraform -chdir=dev output -raw dev_s3_vpce_id)" \
-  -var="dev_dynamodb_vpce_id=$(terraform -chdir=dev output -raw dev_dynamodb_vpce_id)" \
-  -var="test_s3_vpce_id=$(terraform -chdir=test output -raw test_s3_vpce_id)" \
-  -var="test_dynamodb_vpce_id=$(terraform -chdir=test output -raw test_dynamodb_vpce_id)"
-```
+````markdown
+# Project Setup Guide
+
+## Installation Steps
+
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
+2. Start the app:
+   ```bash
+   npm run dev
+   ```
+
+![Setup Screen](assets/setup-screen.png)
+````
 
 ---
 
-## Security Highlights
+## 6) Tools Comparison
 
-- **No Internet Gateway** in any VPC — true air-gapped setup
-- **S3 bucket policy** denies all access unless `aws:sourceVpce` matches allowed endpoints
-- **DynamoDB resource policy** restricts access to specific VPCE IDs and IAM principals
-- **Private API Gateway** resource policy allows invocations only from the `execute-api` VPC endpoint
-- **Nginx EC2** uses IMDSv2 (`http_tokens = required`) and is managed via SSM — no SSH/bastion needed
-- **Lambda** runs in VPC mode with no public IP
-- **S3 objects** encrypted with KMS (bucket key enabled to reduce KMS costs)
-- **DynamoDB** has point-in-time recovery and server-side encryption enabled
+| Tool | Type | Pros | Cons | Best For |
+|---|---|---|---|---|
+| Pandoc | CLI | Accurate, scriptable, supports media extraction | Requires install, occasional cleanup needed | Engineers and automation |
+| CloudConvert | Web | Easy UI, no setup | Upload/privacy concerns, may need paid tier | Quick one-off conversions |
+| Zamzar | Web | Simple workflow | File size limits, formatting can vary | Non-technical users |
+| Python (`pypandoc`) | Script/API | Repeatable in CI or batch pipelines | Requires Python setup and Pandoc backend | Teams automating docs |
+| Manual conversion | Human | Highest editorial quality | Time-consuming | Final polishing and critical docs |
+
+---
+
+## 7) Troubleshooting
+
+### Issue: Formatting looks broken
+- Re-run conversion with `-t gfm`.
+- Normalize heading levels and remove extra blank lines.
+- Check for unsupported Word styles.
+
+### Issue: Images are missing
+- Use Pandoc `--extract-media=./assets`.
+- Ensure links are relative and files are committed.
+
+### Issue: Tables are messy
+- Simplify merged/complex tables in DOCX before conversion.
+- Manually rewrite complex tables in Markdown.
+
+### Issue: Special characters are corrupted
+- Ensure UTF-8 encoding.
+- Replace Word smart quotes/dashes if needed.
+
+### Issue: Code blocks lost formatting
+- Re-wrap code in fenced blocks:
+  ````markdown
+  ```bash
+  your command
+  ```
+  ````
+
+---
+
+## Quick Recommendation
+
+For most teams, use **Pandoc + manual cleanup**:
+1. Convert with Pandoc (`gfm` output)
+2. Extract media into `assets/`
+3. Manually polish headings, tables, and examples
+4. Validate final rendering on GitHub
