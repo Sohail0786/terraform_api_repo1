@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AWS IAM Deep Dive – Animated Guide</title>
+  <style>
+    /* ── Reset & Base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --aws-orange: #FF9900;
+      --aws-blue:   #232F3E;
+      --aws-teal:   #00A1C9;
+      --aws-green:  #1A9C3E;
+      --aws-red:    #D13212;
+      --aws-purple: #7D3C98;
+      --bg:         #0F1923;
+      --card:       #1A2535;
+      --card2:      #1E2D42;
+      --text:       #E8EDF2;
+      --muted:      #8899AA;
+      --border:     #2A3F55;
+      --radius:     14px;
+      --shadow:     0 4px 24px rgba(0,0,0,.45);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, #0d1b2a 0%, #162032 50%, #1a2540 100%);
+      text-align: center;
+      padding: 80px 24px 60px;
+      border-bottom: 2px solid var(--aws-orange);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute; inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(255,153,0,.08) 0%, transparent 70%);
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(255,153,0,.15);
+      border: 1px solid var(--aws-orange);
+      color: var(--aws-orange);
+      font-size: .78rem;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      padding: 4px 14px;
+      border-radius: 20px;
+      margin-bottom: 20px;
+      animation: fadeDown .6s ease both;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.6rem);
+      font-weight: 800;
+      background: linear-gradient(90deg, #FF9900, #FFD580, #FF9900);
+      background-size: 200%;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 3s linear infinite, fadeDown .7s .1s ease both;
+    }
+    .hero p {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 1.1rem;
+      max-width: 620px;
+      margin-inline: auto;
+      animation: fadeDown .7s .2s ease both;
+    }
+    @keyframes shimmer { to { background-position: 200% center; } }
+    @keyframes fadeDown { from { opacity:0; transform:translateY(-20px);} to {opacity:1;transform:translateY(0);} }
+
+    /* ── Nav Pills ── */
+    .nav-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      padding: 28px 24px;
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .nav-pills a {
+      text-decoration: none;
+      color: var(--muted);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      padding: 7px 18px;
+      border-radius: 20px;
+      font-size: .85rem;
+      font-weight: 600;
+      transition: all .25s;
+    }
+    .nav-pills a:hover {
+      color: var(--aws-orange);
+      border-color: var(--aws-orange);
+      background: rgba(255,153,0,.08);
+    }
+
+    /* ── Section Wrapper ── */
+    .section {
+      max-width: 1100px;
+      margin: 60px auto;
+      padding: 0 24px;
+    }
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 32px;
+    }
+    .section-title .icon {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      display: grid; place-items: center;
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+    .section-title h2 {
+      font-size: 1.7rem;
+      font-weight: 700;
+    }
+    .section-title p { color: var(--muted); font-size: .95rem; margin-top: 2px; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    /* ── Badge chips ── */
+    .badge {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .04em;
+    }
+    .badge-orange { background: rgba(255,153,0,.15); color: var(--aws-orange); }
+    .badge-teal   { background: rgba(0,161,201,.15); color: var(--aws-teal); }
+    .badge-green  { background: rgba(26,156,62,.15);  color: var(--aws-green); }
+    .badge-red    { background: rgba(209,50,18,.15);  color: var(--aws-red); }
+    .badge-purple { background: rgba(125,60,152,.15); color: var(--aws-purple); }
+
+    /* ── 1. Identity Overview Diagram ── */
+    .identity-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+    .identity-card {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      text-align: center;
+      transition: transform .3s, box-shadow .3s;
+      cursor: default;
+    }
+    .identity-card:hover { transform: translateY(-6px); box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+    .identity-card .ic-emoji { font-size: 2.8rem; margin-bottom: 12px; }
+    .identity-card h3 { font-size: 1.05rem; margin-bottom: 6px; }
+    .identity-card p  { font-size: .82rem; color: var(--muted); }
+
+    /* ── 2. AssumeRole Animation ── */
+    .flow-container {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px 20px;
+      overflow-x: auto;
+    }
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      min-width: 700px;
+      flex-wrap: nowrap;
+      position: relative;
+    }
+    .flow-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      flex-shrink: 0;
+      width: 130px;
+    }
+    .flow-node .fn-box {
+      width: 90px; height: 90px;
+      border-radius: 18px;
+      display: grid; place-items: center;
+      font-size: 2rem;
+      border: 2px solid transparent;
+      position: relative;
+      transition: transform .3s;
+    }
+    .flow-node .fn-box.pulse { animation: pulseBox 2s infinite; }
+    .flow-node .fn-label { font-size: .8rem; color: var(--muted); margin-top: 10px; font-weight: 600; line-height: 1.3; }
+    @keyframes pulseBox {
+      0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,153,0,.4); }
+      50%      { transform: scale(1.06); box-shadow: 0 0 0 12px rgba(255,153,0,0); }
+    }
+
+    .flow-arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 80px;
+      flex-shrink: 0;
+    }
+    .flow-arrow .arrow-line {
+      width: 100%;
+      height: 2px;
+      background: linear-gradient(90deg, var(--aws-orange), var(--aws-teal));
+      position: relative;
+      overflow: visible;
+    }
+    .flow-arrow .arrow-line::after {
+      content: '▶';
+      position: absolute;
+      right: -10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--aws-teal);
+      font-size: 12px;
+    }
+    .flow-arrow .arrow-anim {
+      width: 12px; height: 12px;
+      background: var(--aws-orange);
+      border-radius: 50%;
+      margin-top: -7px;
+      animation: slideArrow 2s linear infinite;
+    }
+    .flow-arrow .arrow-label { font-size: .7rem; color: var(--muted); margin-top: 6px; text-align: center; white-space: nowrap; }
+    @keyframes slideArrow {
+      0%   { transform: translateX(-100%); opacity: 0; }
+      20%  { opacity: 1; }
+      80%  { opacity: 1; }
+      100% { transform: translateX(700%); opacity: 0; }
+    }
+
+    /* Step-by-step flow */
+    .steps-list { list-style: none; counter-reset: step; }
+    .steps-list li {
+      counter-increment: step;
+      display: flex;
+      gap: 16px;
+      padding: 14px 0;
+      border-bottom: 1px solid var(--border);
+      align-items: flex-start;
+      opacity: 0;
+      animation: stepIn .5s ease forwards;
+    }
+    .steps-list li:last-child { border-bottom: none; }
+    .steps-list li::before {
+      content: counter(step);
+      min-width: 32px; height: 32px;
+      background: var(--aws-orange);
+      color: #000;
+      font-weight: 800;
+      font-size: .85rem;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      flex-shrink: 0;
+    }
+    .steps-list li:nth-child(1){ animation-delay:.1s }
+    .steps-list li:nth-child(2){ animation-delay:.25s }
+    .steps-list li:nth-child(3){ animation-delay:.4s }
+    .steps-list li:nth-child(4){ animation-delay:.55s }
+    .steps-list li:nth-child(5){ animation-delay:.7s }
+    .steps-list li:nth-child(6){ animation-delay:.85s }
+    @keyframes stepIn { to { opacity:1; } }
+    .step-content h4 { font-size: .92rem; margin-bottom: 3px; }
+    .step-content p  { font-size: .82rem; color: var(--muted); }
+
+    /* ── 3. Trust Policy JSON Viewer ── */
+    .json-block {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 24px;
+      font-family: 'Courier New', monospace;
+      font-size: .84rem;
+      line-height: 1.8;
+      overflow-x: auto;
+    }
+    .json-key    { color: #79B8FF; }
+    .json-str    { color: #9ECBFF; }
+    .json-val    { color: #F97583; }
+    .json-bool   { color: #FFD700; }
+    .json-anno   { color: #6E8098; font-style: italic; }
+    .json-highlight { background: rgba(255,153,0,.12); border-left: 3px solid var(--aws-orange); padding-left: 6px; display: block; border-radius: 0 4px 4px 0; }
+
+    /* ── 4. Scenario Cards ── */
+    .scenario-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .tab-btn {
+      padding: 8px 18px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--muted);
+      font-size: .84rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .tab-btn.active, .tab-btn:hover {
+      background: var(--aws-orange);
+      color: #000;
+      border-color: var(--aws-orange);
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:translateY(0);} }
+
+    .scenario-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media(max-width:700px){ .scenario-layout { grid-template-columns: 1fr; } }
+
+    /* ── 5. Permission Boundary Visual ── */
+    .perm-visual {
+      position: relative;
+      background: var(--card2);
+      border: 2px dashed var(--aws-orange);
+      border-radius: 18px;
+      padding: 32px 24px;
+      text-align: center;
+      overflow: hidden;
+    }
+    .perm-visual .outer-label {
+      position: absolute;
+      top: 10px; left: 16px;
+      font-size: .72rem;
+      color: var(--aws-orange);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+    }
+    .perm-inner {
+      background: rgba(0,161,201,.08);
+      border: 2px solid var(--aws-teal);
+      border-radius: 12px;
+      padding: 20px;
+      margin-top: 16px;
+      display: inline-block;
+      min-width: 260px;
+    }
+    .perm-inner .inner-label {
+      font-size: .72rem;
+      color: var(--aws-teal);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: 8px;
+    }
+    .perm-effective {
+      background: rgba(26,156,62,.1);
+      border: 2px solid var(--aws-green);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 16px;
+    }
+    .perm-effective .e-label {
+      font-size: .72rem;
+      color: var(--aws-green);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+    }
+    .perm-list { list-style: none; margin-top: 6px; }
+    .perm-list li { font-size: .8rem; padding: 2px 0; }
+    .perm-list .allowed::before { content: '✅ '; }
+    .perm-list .denied::before  { content: '❌ '; }
+
+    /* ── 6. IAM Policy Evaluation Flowchart ── */
+    .eval-chart {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+    .eval-box {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 24px;
+      font-size: .85rem;
+      font-weight: 600;
+      text-align: center;
+      min-width: 220px;
+      position: relative;
+      transition: background .3s;
+    }
+    .eval-box.decision {
+      background: rgba(255,153,0,.1);
+      border-color: var(--aws-orange);
+      border-radius: 6px;
+      transform: rotate(0deg);
+      clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+      width: 160px; height: 160px;
+      display: grid; place-items: center;
+      padding: 0 28px;
+    }
+    .eval-connector {
+      width: 2px;
+      height: 36px;
+      background: linear-gradient(180deg, var(--aws-orange), var(--border));
+      position: relative;
+    }
+    .eval-connector::after {
+      content: '▼';
+      position: absolute;
+      bottom: -14px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--aws-orange);
+      font-size: 12px;
+    }
+    .eval-result {
+      display: flex;
+      gap: 24px;
+      margin-top: 36px;
+    }
+    .result-allow {
+      background: rgba(26,156,62,.12);
+      border: 2px solid var(--aws-green);
+      border-radius: 10px;
+      padding: 14px 28px;
+      color: var(--aws-green);
+      font-weight: 700;
+      font-size: 1rem;
+    }
+    .result-deny {
+      background: rgba(209,50,18,.12);
+      border: 2px solid var(--aws-red);
+      border-radius: 10px;
+      padding: 14px 28px;
+      color: var(--aws-red);
+      font-weight: 700;
+      font-size: 1rem;
+    }
+
+    /* ── 7. Comparison Table ── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .88rem;
+    }
+    .compare-table th {
+      background: var(--card2);
+      padding: 12px 16px;
+      text-align: left;
+      color: var(--aws-orange);
+      font-weight: 700;
+      border-bottom: 2px solid var(--aws-orange);
+    }
+    .compare-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .compare-table tr:hover td { background: rgba(255,153,0,.04); }
+
+    /* ── 8. CLI / Code Snippets ── */
+    .code-block {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 22px;
+      font-family: 'Courier New', monospace;
+      font-size: .83rem;
+      line-height: 1.8;
+      overflow-x: auto;
+      position: relative;
+    }
+    .code-block .comment { color: #6E8098; }
+    .code-block .cmd     { color: var(--aws-orange); }
+    .code-block .flag    { color: var(--aws-teal); }
+    .code-block .val     { color: #9ECBFF; }
+    .copy-btn {
+      position: absolute;
+      top: 10px; right: 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: .74rem;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .copy-btn:hover { color: var(--aws-orange); border-color: var(--aws-orange); }
+
+    /* ── 9. Animated Architecture ── */
+    .arch-svg-wrap {
+      background: var(--card2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      overflow-x: auto;
+    }
+    .arch-svg-wrap svg { display: block; margin: auto; max-width: 100%; }
+
+    /* ── Tips Box ── */
+    .tip-box {
+      background: rgba(255,153,0,.07);
+      border-left: 4px solid var(--aws-orange);
+      border-radius: 0 10px 10px 0;
+      padding: 14px 18px;
+      margin: 16px 0;
+      font-size: .88rem;
+    }
+    .tip-box strong { color: var(--aws-orange); }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 40px 24px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: .82rem;
+    }
+    footer a { color: var(--aws-orange); text-decoration: none; }
+
+    /* ── Divider ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 24px;
+    }
+
+    /* ── Animate on scroll ── */
+    .reveal { opacity: 0; transform: translateY(30px); transition: opacity .6s ease, transform .6s ease; }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════ HERO ══════════════ -->
+<header class="hero">
+  <div class="hero-badge">AWS Expert Series</div>
+  <h1>AWS IAM Deep Dive</h1>
+  <p>Users · Roles · AssumeRole · Trust Policies — with animated flows &amp; real-world examples</p>
+</header>
+
+<!-- ══════════════ NAV ══════════════ -->
+<nav class="nav-pills">
+  <a href="#overview">🗺 Overview</a>
+  <a href="#users">👤 IAM Users</a>
+  <a href="#roles">🎭 IAM Roles</a>
+  <a href="#assumerole">🔄 AssumeRole</a>
+  <a href="#trust">🔐 Trust Policy</a>
+  <a href="#scenarios">🏭 Scenarios</a>
+  <a href="#evaluation">⚖️ Evaluation</a>
+  <a href="#comparison">📊 Comparison</a>
+  <a href="#cli">💻 CLI/SDK</a>
+</nav>
+
+<!-- ══════════════ 1. OVERVIEW ══════════════ -->
+<section class="section reveal" id="overview">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(255,153,0,.15);color:var(--aws-orange)">🗺</div>
+    <div>
+      <h2>IAM Identity Overview</h2>
+      <p>Every AWS request is authenticated by an <em>Identity</em> and authorized by <em>Policies</em></p>
+    </div>
+  </div>
+
+  <div class="identity-grid">
+    <div class="identity-card">
+      <div class="ic-emoji">👤</div>
+      <h3>IAM User</h3>
+      <p>A permanent identity with long-term credentials (password / access keys). Represents a human or application.</p>
+      <br/><span class="badge badge-orange">Long-term credentials</span>
+    </div>
+    <div class="identity-card">
+      <div class="ic-emoji">🎭</div>
+      <h3>IAM Role</h3>
+      <p>A temporary identity with <em>no</em> credentials of its own. It is <em>assumed</em> by trusted entities for a session.</p>
+      <br/><span class="badge badge-teal">Short-term credentials</span>
+    </div>
+    <div class="identity-card">
+      <div class="ic-emoji">👥</div>
+      <h3>IAM Group</h3>
+      <p>A collection of IAM Users. Attach a policy once to the group; all members inherit the permissions.</p>
+      <br/><span class="badge badge-purple">Organizational tool</span>
+    </div>
+    <div class="identity-card">
+      <div class="ic-emoji">📜</div>
+      <h3>IAM Policy</h3>
+      <p>A JSON document that defines what actions on which resources are <strong>Allow</strong>ed or <strong>Deny</strong>ed.</p>
+      <br/><span class="badge badge-green">Permission document</span>
+    </div>
+    <div class="identity-card">
+      <div class="ic-emoji">🔐</div>
+      <h3>Trust Policy</h3>
+      <p>A special policy attached to a <em>Role</em> that specifies <strong>who</strong> (principal) is allowed to assume it.</p>
+      <br/><span class="badge badge-red">Role's door key</span>
+    </div>
+    <div class="identity-card">
+      <div class="ic-emoji">🏷</div>
+      <h3>Permission Boundary</h3>
+      <p>An advanced guard-rail that caps the <em>maximum</em> permissions an identity can have, even if a policy allows more.</p>
+      <br/><span class="badge badge-orange">Max permissions cap</span>
+    </div>
+  </div>
+
+  <div class="tip-box" style="margin-top:24px">
+    <strong>💡 Golden Rule:</strong> By default AWS <em>denies everything</em>. An explicit <strong>Allow</strong> must exist, and an explicit <strong>Deny</strong> always wins — even over an Allow.
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ 2. IAM USERS ══════════════ -->
+<section class="section reveal" id="users">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(0,161,201,.15);color:var(--aws-teal)">👤</div>
+    <div>
+      <h2>IAM Users</h2>
+      <p>Permanent identities with long-term credentials attached to a single AWS account</p>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3 style="margin-bottom:12px;color:var(--aws-teal)">What is an IAM User?</h3>
+      <p style="font-size:.9rem;color:var(--muted)">An IAM User is an entity you create in AWS to represent the person or application that uses it to interact with AWS. A user in AWS consists of a name and credentials.</p>
+      <div class="tip-box" style="margin-top:16px">
+        <strong>Real Example:</strong> Your DevOps engineer <em>Alice</em> needs to deploy to EC2. You create an IAM user <code>alice</code>, attach an EC2 policy, and give her API access keys.
+      </div>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:12px;color:var(--aws-teal)">Credential Types</h3>
+      <ul style="list-style:none;font-size:.88rem;display:flex;flex-direction:column;gap:10px">
+        <li>🔑 <strong>Console password</strong> – login at <code>console.aws.amazon.com</code></li>
+        <li>🗝 <strong>Access Key ID + Secret Key</strong> – programmatic access (CLI / SDK)</li>
+        <li>📲 <strong>MFA device</strong> – virtual (Authenticator app) or hardware token</li>
+        <li>🖋 <strong>SSH keys</strong> – only for AWS CodeCommit</li>
+        <li>🌐 <strong>HTTPS Git credentials</strong> – CodeCommit HTTPS</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-bottom:12px;color:var(--aws-teal)">IAM User Limits &amp; Best Practices</h3>
+      <ul style="list-style:none;font-size:.88rem;display:flex;flex-direction:column;gap:8px">
+        <li>⚠️ Max <strong>5,000</strong> IAM users per account</li>
+        <li>✅ Always enable <strong>MFA</strong> for privileged users</li>
+        <li>✅ Rotate access keys every <strong>90 days</strong></li>
+        <li>✅ Follow <strong>least-privilege</strong> principle</li>
+        <li>✅ Prefer <strong>IAM Roles</strong> for applications over users</li>
+        <li>❌ Never share access keys between users</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ 3. IAM ROLES ══════════════ -->
+<section class="section reveal" id="roles">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(125,60,152,.15);color:var(--aws-purple)">🎭</div>
+    <div>
+      <h2>IAM Roles</h2>
+      <p>Temporary identities that can be <em>assumed</em> by AWS services, users, or external entities</p>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card" style="grid-column: span 2">
+      <h3 style="margin-bottom:16px;color:var(--aws-purple)">Why Roles instead of Users?</h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+        <div>
+          <h4 style="color:var(--aws-red);margin-bottom:8px">❌ IAM User for EC2 (BAD)</h4>
+          <ul style="font-size:.85rem;color:var(--muted);list-style:disc;padding-left:20px;line-height:2">
+            <li>Hard-code access keys in app code or env vars</li>
+            <li>Keys can leak via logs, git history, memory dumps</li>
+            <li>Manual rotation across all instances</li>
+            <li>No automatic expiry</li>
+          </ul>
+        </div>
+        <div>
+          <h4 style="color:var(--aws-green);margin-bottom:8px">✅ IAM Role for EC2 (GOOD)</h4>
+          <ul style="font-size:.85rem;color:var(--muted);list-style:disc;padding-left:20px;line-height:2">
+            <li>Instance Metadata Service (IMDS) automatically provides temp creds</li>
+            <li>Credentials auto-rotate every ~1 hour</li>
+            <li>No secrets stored anywhere</li>
+            <li>Audit via CloudTrail easily</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:12px;color:var(--aws-purple)">Role Use Cases</h3>
+      <ul style="list-style:none;font-size:.88rem;display:flex;flex-direction:column;gap:10px">
+        <li>🖥 <strong>AWS Service Role</strong> – EC2, Lambda, ECS task needing access to S3/DynamoDB</li>
+        <li>🔀 <strong>Cross-Account Role</strong> – Account A assuming a role in Account B</li>
+        <li>🌐 <strong>Federated Role</strong> – External identity (Google SSO, SAML, OIDC) mapped to a role</li>
+        <li>👷 <strong>Human Role</strong> – Developer temporarily elevating to Admin role with MFA</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:12px;color:var(--aws-purple)">Role Anatomy</h3>
+      <ul style="list-style:none;font-size:.88rem;display:flex;flex-direction:column;gap:8px">
+        <li>📋 <strong>Trust Policy</strong> – defines <em>who</em> can assume this role (Principal)</li>
+        <li>📜 <strong>Permission Policy</strong> – defines <em>what</em> the role can do</li>
+        <li>⏱ <strong>Max Session Duration</strong> – 1–12 hours (default 1 hr)</li>
+        <li>🏷 <strong>Session Tags</strong> – ABAC tags passed during AssumeRole</li>
+        <li>🔒 <strong>Inline vs Managed</strong> – inline is embedded; managed is reusable</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ 4. ASSUMEROLE ANIMATION ══════════════ -->
+<section class="section reveal" id="assumerole">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(255,153,0,.15);color:var(--aws-orange)">🔄</div>
+    <div>
+      <h2>AssumeRole Flow – Animated</h2>
+      <p>How an entity requests and uses temporary credentials via AWS STS</p>
+    </div>
+  </div>
+
+  <!-- Animated Flow Diagram -->
+  <div class="flow-container">
+    <div class="flow-diagram">
+
+      <!-- Node: Caller -->
+      <div class="flow-node">
+        <div class="fn-box pulse" style="background:rgba(0,161,201,.12);border-color:var(--aws-teal)">🧑‍💻</div>
+        <div class="fn-label">Caller<br/>(User / EC2 / Lambda)</div>
+      </div>
+
+      <!-- Arrow 1 -->
+      <div class="flow-arrow">
+        <div class="arrow-line"></div>
+        <div class="arrow-anim"></div>
+        <div class="arrow-label">sts:AssumeRole<br/>request</div>
+      </div>
+
+      <!-- Node: STS -->
+      <div class="flow-node">
+        <div class="fn-box" style="background:rgba(255,153,0,.12);border-color:var(--aws-orange);animation:pulseBox 2s .5s infinite">🏛</div>
+        <div class="fn-label">AWS STS<br/>(Security Token Service)</div>
+      </div>
+
+      <!-- Arrow 2 -->
+      <div class="flow-arrow">
+        <div class="arrow-line" style="background:linear-gradient(90deg,var(--aws-orange),var(--aws-green))"></div>
+        <div class="arrow-anim" style="animation-delay:.8s;background:var(--aws-green)"></div>
+        <div class="arrow-label">Validates Trust<br/>Policy &amp; Permissions</div>
+      </div>
+
+      <!-- Node: IAM Role -->
+      <div class="flow-node">
+        <div class="fn-box" style="background:rgba(125,60,152,.12);border-color:var(--aws-purple);animation:pulseBox 2s 1s infinite">🎭</div>
+        <div class="fn-label">IAM Role<br/>(Target Role)</div>
+      </div>
+
+      <!-- Arrow 3 -->
+      <div class="flow-arrow">
+        <div class="arrow-line" style="background:linear-gradient(90deg,var(--aws-purple),var(--aws-green))"></div>
+        <div class="arrow-anim" style="animation-delay:1.3s;background:var(--aws-green)"></div>
+        <div class="arrow-label">Temp Credentials<br/>(AccessKey+Token)</div>
+      </div>
+
+      <!-- Node: AWS Services -->
+      <div class="flow-node">
+        <div class="fn-box" style="background:rgba(26,156,62,.12);border-color:var(--aws-green);animation:pulseBox 2s 1.5s infinite">☁️</div>
+        <div class="fn-label">AWS Services<br/>(S3, DynamoDB…)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step-by-step breakdown -->
+  <div class="card" style="margin-top:24px">
+    <h3 style="margin-bottom:16px;color:var(--aws-orange)">Step-by-Step Breakdown</h3>
+    <ol class="steps-list">
+      <li>
+        <div class="step-content">
+          <h4>Caller invokes <code>sts:AssumeRole</code></h4>
+          <p>The caller (IAM User, EC2 instance profile, or Lambda execution role) makes an API call to AWS STS with the ARN of the target role.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-content">
+          <h4>STS validates the Trust Policy</h4>
+          <p>STS checks the role's <strong>Trust Policy</strong>: is the caller's ARN listed as an allowed <code>Principal</code>? Is the <code>sts:AssumeRole</code> action permitted?</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-content">
+          <h4>STS validates the caller's permissions</h4>
+          <p>The caller must also have a permission policy that allows <code>sts:AssumeRole</code> on the target role ARN (or <code>*</code>).</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-content">
+          <h4>STS issues temporary credentials</h4>
+          <p>On success STS returns: <code>AccessKeyId</code>, <code>SecretAccessKey</code>, <code>SessionToken</code>, and an <code>Expiration</code> timestamp (default 1 hr).</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-content">
+          <h4>Caller uses credentials for AWS API calls</h4>
+          <p>All subsequent requests are signed with the temporary credentials. CloudTrail records them as <em>assumed-role sessions</em>.</p>
+        </div>
+      </li>
+      <li>
+        <div class="step-content">
+          <h4>Credentials automatically expire</h4>
+          <p>After expiry the credentials become invalid. The caller must call <code>AssumeRole</code> again to get fresh credentials — no manual rotation needed.</p>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ 5. TRUST POLICY ══════════════ -->
+<section class="section reveal" id="trust">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(209,50,18,.15);color:var(--aws-red)">🔐</div>
+    <div>
+      <h2>Trust Policy (Resource-Based Policy on a Role)</h2>
+      <p>Specifies <em>who</em> is allowed to assume the role — the role's front door</p>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <!-- Trust Policy JSON Examples via tabs -->
+    <div class="card" style="grid-column:span 2">
+      <div class="scenario-tabs" id="trust-tabs">
+        <button class="tab-btn active" onclick="switchTrust(this,'t1')">🖥 EC2 Service</button>
+        <button class="tab-btn" onclick="switchTrust(this,'t2')">🔀 Cross-Account</button>
+        <button class="tab-btn" onclick="switchTrust(this,'t3')">🌐 GitHub Actions OIDC</button>
+        <button class="tab-btn" onclick="switchTrust(this,'t4')">👷 Human (MFA)</button>
+      </div>
+
+      <!-- EC2 Service Trust Policy -->
+      <div class="tab-content active" id="t1">
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px">
+          Allows the EC2 service (<code>ec2.amazonaws.com</code>) to assume this role. Used for EC2 Instance Profiles.
+        </p>
+        <div class="json-block">
+<span class="json-anno">// Trust Policy: allows EC2 service to assume this role</span>
+{
+  <span class="json-key">"Version"</span>: <span class="json-str">"2012-10-17"</span>,
+  <span class="json-key">"Statement"</span>: [
+    {
+      <span class="json-key">"Effect"</span>: <span class="json-str">"Allow"</span>,
+<span class="json-highlight">      <span class="json-key">"Principal"</span>: {
+        <span class="json-key">"Service"</span>: <span class="json-str">"ec2.amazonaws.com"</span>   <span class="json-anno">← the trusted entity</span>
+      },</span>
+      <span class="json-key">"Action"</span>: <span class="json-str">"sts:AssumeRole"</span>
+    }
+  ]
+}
+        </div>
+        <div class="tip-box">
+          <strong>Real World:</strong> Your web server on EC2 needs to read from S3. Attach a role with this trust policy + an S3 read permission policy. The EC2 SDK auto-fetches credentials via IMDS — no keys in code!
+        </div>
+      </div>
+
+      <!-- Cross-Account -->
+      <div class="tab-content" id="t2">
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px">
+          Allows IAM user/role in <strong>Account A (111122223333)</strong> to assume a role in <strong>Account B (444455556666)</strong>.
+        </p>
+        <div class="json-block">
+<span class="json-anno">// Account B's role trust policy — trusts Account A's admin user</span>
+{
+  <span class="json-key">"Version"</span>: <span class="json-str">"2012-10-17"</span>,
+  <span class="json-key">"Statement"</span>: [
+    {
+      <span class="json-key">"Effect"</span>: <span class="json-str">"Allow"</span>,
+<span class="json-highlight">      <span class="json-key">"Principal"</span>: {
+        <span class="json-key">"AWS"</span>: <span class="json-str">"arn:aws:iam::111122223333:user/alice"</span>
+      },</span>
+      <span class="json-key">"Action"</span>: <span class="json-str">"sts:AssumeRole"</span>,
+      <span class="json-key">"Condition"</span>: {
+        <span class="json-key">"Bool"</span>: {
+          <span class="json-key">"aws:MultiFactorAuthPresent"</span>: <span class="json-bool">true</span>   <span class="json-anno">← MFA required</span>
+        }
+      }
+    }
+  ]
+}
+        </div>
+        <div class="tip-box">
+          <strong>Real World:</strong> Your company has a centralised Security account. DevOps engineers in Account A switch to an <em>AuditRole</em> in each child account — one identity, many accounts, full audit trail.
+        </div>
+      </div>
+
+      <!-- GitHub Actions OIDC -->
+      <div class="tab-content" id="t3">
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px">
+          Allows GitHub Actions CI/CD pipelines to assume a role <em>without</em> storing AWS credentials as GitHub secrets.
+        </p>
+        <div class="json-block">
+<span class="json-anno">// OIDC Trust Policy for GitHub Actions</span>
+{
+  <span class="json-key">"Version"</span>: <span class="json-str">"2012-10-17"</span>,
+  <span class="json-key">"Statement"</span>: [
+    {
+      <span class="json-key">"Effect"</span>: <span class="json-str">"Allow"</span>,
+<span class="json-highlight">      <span class="json-key">"Principal"</span>: {
+        <span class="json-key">"Federated"</span>: <span class="json-str">"arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"</span>
+      },</span>
+      <span class="json-key">"Action"</span>: <span class="json-str">"sts:AssumeRoleWithWebIdentity"</span>,
+      <span class="json-key">"Condition"</span>: {
+        <span class="json-key">"StringEquals"</span>: {
+          <span class="json-key">"token.actions.githubusercontent.com:aud"</span>: <span class="json-str">"sts.amazonaws.com"</span>
+        },
+        <span class="json-key">"StringLike"</span>: {
+          <span class="json-key">"token.actions.githubusercontent.com:sub"</span>:
+            <span class="json-str">"repo:MyOrg/MyRepo:ref:refs/heads/main"</span>  <span class="json-anno">← scoped to 1 branch</span>
+        }
+      }
+    }
+  ]
+}
+        </div>
+        <div class="tip-box">
+          <strong>Real World:</strong> Your Terraform CD pipeline on GitHub Actions deploys infrastructure to AWS. Zero long-lived secrets — GitHub presents an OIDC token, STS validates it and returns temp creds.
+        </div>
+      </div>
+
+      <!-- Human with MFA -->
+      <div class="tab-content" id="t4">
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:12px">
+          Allows any IAM user in the same account to assume the role <em>only if</em> MFA is present (break-glass admin role pattern).
+        </p>
+        <div class="json-block">
+<span class="json-anno">// Trust Policy: any user in same account with MFA can assume</span>
+{
+  <span class="json-key">"Version"</span>: <span class="json-str">"2012-10-17"</span>,
+  <span class="json-key">"Statement"</span>: [
+    {
+      <span class="json-key">"Effect"</span>: <span class="json-str">"Allow"</span>,
+<span class="json-highlight">      <span class="json-key">"Principal"</span>: {
+        <span class="json-key">"AWS"</span>: <span class="json-str">"arn:aws:iam::123456789012:root"</span>  <span class="json-anno">← entire account</span>
+      },</span>
+      <span class="json-key">"Action"</span>: <span class="json-str">"sts:AssumeRole"</span>,
+      <span class="json-key">"Condition"</span>: {
+        <span class="json-key">"Bool"</span>: {
+          <span class="json-key">"aws:MultiFactorAuthPresent"</span>: <span class="json-bool">true</span>
+        },
+        <span class="json-key">"NumericLessThan"</span>: {
+          <span class="json-key">"aws:MultiFactorAuthAge"</span>: <span class="json-bool">3600</span>  <span class="json-anno">← MFA &lt; 1hr old</span>
+        }
+      }
+    }
+  ]
+}
+        </div>
+        <div class="tip-box">
+          <strong>Real World:</strong> You have a <em>BreakGlassAdminRole</em>. Normal developers have read-only access. When needed, they use their TOTP authenticator, assume the admin role for 1 hour, then it expires.
+        </div>
+      </div>
+    </div><!-- end card -->
+  </div>
+
+  <!-- Trust Policy key concepts -->
+  <div class="card-grid" style="margin-top:20px">
+    <div class="card">
+      <h3 style="color:var(--aws-red);margin-bottom:14px">Principal Types</h3>
+      <table style="width:100%;font-size:.83rem;border-collapse:collapse">
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="padding:6px 0;color:var(--muted);text-align:left">Type</th>
+          <th style="padding:6px;color:var(--muted);text-align:left">Example</th>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 0"><code style="color:var(--aws-teal)">AWS</code></td>
+          <td style="padding:8px 0;color:var(--muted)">IAM user or role ARN in any account</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 0"><code style="color:var(--aws-teal)">Service</code></td>
+          <td style="padding:8px 0;color:var(--muted)">ec2.amazonaws.com, lambda.amazonaws.com</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:8px 0"><code style="color:var(--aws-teal)">Federated</code></td>
+          <td style="padding:8px 0;color:var(--muted)">SAML / OIDC provider ARN</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0"><code style="color:var(--aws-teal)">*</code></td>
+          <td style="padding:8px 0;color:var(--muted)">Anyone (use Conditions to restrict!)</td>
+        </tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--aws-red);margin-bottom:14px">Common Conditions</h3>
+      <ul style="list-style:none;font-size:.83rem;display:flex;flex-direction:column;gap:10px">
+        <li><code style="color:var(--aws-teal)">aws:MultiFactorAuthPresent: true</code> — require MFA</li>
+        <li><code style="color:var(--aws-teal)">aws:SourceIp: [...]</code> — restrict by IP / VPC CIDR</li>
+        <li><code style="color:var(--aws-teal)">sts:ExternalId: "secret"</code> — cross-account confused deputy protection</li>
+        <li><code style="color:var(--aws-teal)">aws:RequestedRegion: "us-east-1"</code> — limit to a region</li>
+        <li><code style="color:var(--aws-teal)">aws:PrincipalTag/env: "prod"</code> — ABAC tag matching</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ 6. REAL WORLD SCENARIOS ══════════════ -->
+<section class="section reveal" id="scenarios">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(26,156,62,.15);color:var(--aws-green)">🏭</div>
+    <div>
+      <h2>Real-World Scenarios</h2>
+      <p>How IAM Roles and AssumeRole power common AWS architectures</p>
+    </div>
+  </div>
+
+  <div class="scenario-tabs">
+    <button class="tab-btn active" onclick="switchScenario(this,'s1')">Lambda → DynamoDB</button>
+    <button class="tab-btn" onclick="switchScenario(this,'s2')">Cross-Account Deployment</button>
+    <button class="tab-btn" onclick="switchScenario(this,'s3')">EKS Pod Identity</button>
+    <button class="tab-btn" onclick="switchScenario(this,'s4')">Audit / Read-Only</button>
+  </div>
+
+  <!-- Scenario 1: Lambda → DynamoDB -->
+  <div class="tab-content active" id="s1">
+    <div class="scenario-layout">
+      <div class="card">
+        <h3 style="color:var(--aws-orange);margin-bottom:14px">🔵 Lambda reads from DynamoDB</h3>
+        <ol style="font-size:.85rem;color:var(--muted);padding-left:18px;line-height:2.2">
+          <li>Create IAM Role <strong>LambdaExecutionRole</strong></li>
+          <li>Trust Policy: Principal = <code>lambda.amazonaws.com</code></li>
+          <li>Attach permission policy: <code>dynamodb:GetItem</code> on table ARN</li>
+          <li>Assign role to Lambda function</li>
+          <li>Lambda SDK auto-assumes the role via STS at invocation</li>
+        </ol>
+        <div class="tip-box">Zero credentials stored. Auto-rotated every hour.
+        </div>
+      </div>
+      <div class="card">
+        <div class="json-block" style="font-size:.78rem">
+<span class="json-anno">// Trust Policy</span>
+{
+  <span class="json-key">"Principal"</span>: {
+    <span class="json-key">"Service"</span>: <span class="json-str">"lambda.amazonaws.com"</span>
+  },
+  <span class="json-key">"Action"</span>: <span class="json-str">"sts:AssumeRole"</span>
+}
+
+<span class="json-anno">// Permission Policy</span>
+{
+  <span class="json-key">"Effect"</span>: <span class="json-str">"Allow"</span>,
+  <span class="json-key">"Action"</span>: [
+    <span class="json-str">"dynamodb:GetItem"</span>,
+    <span class="json-str">"dynamodb:Query"</span>
+  ],
+  <span class="json-key">"Resource"</span>:
+    <span class="json-str">"arn:aws:dynamodb:us-east-1:123456789012:table/Orders"</span>
+}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scenario 2: Cross-Account Deployment -->
+  <div class="tab-content" id="s2">
+    <div class="scenario-layout">
+      <div class="card">
+        <h3 style="color:var(--aws-orange);margin-bottom:14px">🔀 CI/CD deploys to Prod account</h3>
+        <ol style="font-size:.85rem;color:var(--muted);padding-left:18px;line-height:2.2">
+          <li><strong>Tools Account (A)</strong>: CodePipeline execution role</li>
+          <li><strong>Prod Account (B)</strong>: Create <code>DeployRole</code></li>
+          <li>Prod's trust policy trusts Tools account role ARN</li>
+          <li>Pipeline does <code>AssumeRole</code> into Prod's DeployRole</li>
+          <li>Uses temp creds to deploy CloudFormation stack in Prod</li>
+          <li>Creds expire — no lingering access</li>
+        </ol>
+      </div>
+      <div class="card">
+        <div class="arch-svg-wrap" style="padding:16px">
+          <svg viewBox="0 0 480 200" width="480" height="200" xmlns="http://www.w3.org/2000/svg">
+            <!-- Account A box -->
+            <rect x="10" y="20" width="180" height="160" rx="12" fill="rgba(0,161,201,.08)" stroke="#00A1C9" stroke-width="1.5"/>
+            <text x="100" y="44" text-anchor="middle" font-size="11" fill="#00A1C9" font-weight="bold">TOOLS ACCOUNT (A)</text>
+            <rect x="30" y="60" width="140" height="48" rx="8" fill="rgba(0,161,201,.15)" stroke="#00A1C9" stroke-width="1"/>
+            <text x="100" y="80" text-anchor="middle" font-size="10" fill="#E8EDF2">CodePipeline</text>
+            <text x="100" y="96" text-anchor="middle" font-size="9" fill="#8899AA">PipelineRole</text>
+            <!-- Account B box -->
+            <rect x="290" y="20" width="180" height="160" rx="12" fill="rgba(209,50,18,.08)" stroke="#D13212" stroke-width="1.5"/>
+            <text x="380" y="44" text-anchor="middle" font-size="11" fill="#D13212" font-weight="bold">PROD ACCOUNT (B)</text>
+            <rect x="310" y="60" width="140" height="48" rx="8" fill="rgba(209,50,18,.12)" stroke="#D13212" stroke-width="1"/>
+            <text x="380" y="80" text-anchor="middle" font-size="10" fill="#E8EDF2">DeployRole</text>
+            <text x="380" y="96" text-anchor="middle" font-size="9" fill="#8899AA">Trusts PipelineRole ARN</text>
+            <!-- CF stack -->
+            <rect x="310" y="120" width="140" height="40" rx="8" fill="rgba(26,156,62,.1)" stroke="#1A9C3E" stroke-width="1"/>
+            <text x="380" y="144" text-anchor="middle" font-size="10" fill="#1A9C3E">CloudFormation Stack</text>
+            <!-- STS arrow -->
+            <line x1="200" y1="84" x2="290" y2="84" stroke="#FF9900" stroke-width="2" marker-end="url(#arr)"/>
+            <text x="245" y="76" text-anchor="middle" font-size="9" fill="#FF9900">sts:AssumeRole</text>
+            <!-- Deploy arrow -->
+            <line x1="380" y1="108" x2="380" y2="120" stroke="#1A9C3E" stroke-width="1.5" marker-end="url(#arr2)"/>
+            <!-- AWS STS cloud in middle -->
+            <rect x="205" y="95" width="70" height="28" rx="8" fill="rgba(255,153,0,.12)" stroke="#FF9900" stroke-width="1"/>
+            <text x="240" y="113" text-anchor="middle" font-size="9" fill="#FF9900">AWS STS</text>
+            <defs>
+              <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#FF9900"/>
+              </marker>
+              <marker id="arr2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L8,3 z" fill="#1A9C3E"/>
+              </marker>
+            </defs>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scenario 3: EKS Pod Identity -->
+  <div class="tab-content" id="s3">
+    <div class="scenario-layout">
+      <div class="card">
+        <h3 style="color:var(--aws-orange);margin-bottom:14px">☸️ EKS Pod needs S3 access (IRSA)</h3>
+        <p style="font-size:.85rem;color:var(--muted);margin-bottom:10px">
+          <strong>IRSA</strong> (IAM Roles for Service Accounts) lets Kubernetes pods get AWS permissions without node-level credentials.
+        </p>
+        <ol style="font-size:.85rem;color:var(--muted);padding-left:18px;line-height:2.2">
+          <li>Create OIDC provider for EKS cluster in IAM</li>
+          <li>Create IAM Role with OIDC trust policy</li>
+          <li>Annotate the Kubernetes ServiceAccount with the role ARN</li>
+          <li>Pod automatically gets OIDC token via projected volume</li>
+          <li>AWS SDK exchanges token for STS temp credentials</li>
+          <li>Only that specific pod/SA gets access — not the whole node!</li>
+        </ol>
+      </div>
+      <div class="card">
+        <div class="json-block" style="font-size:.78rem">
+<span class="json-anno">// IRSA Trust Policy</span>
+{
+  <span class="json-key">"Principal"</span>: {
+    <span class="json-key">"Federated"</span>:
+      <span class="json-str">"arn:aws:iam::123456789012:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE"</span>
+  },
+  <span class="json-key">"Action"</span>: <span class="json-str">"sts:AssumeRoleWithWebIdentity"</span>,
+  <span class="json-key">"Condition"</span>: {
+    <span class="json-key">"StringEquals"</span>: {
+      <span class="json-str">"...:sub"</span>:
+        <span class="json-str">"system:serviceaccount:default:my-app-sa"</span>
+    }
+  }
+}
+
+<span class="json-anno">// k8s ServiceAccount annotation</span>
+<span class="json-key">annotations</span>:
+  eks.amazonaws.com/role-arn: <span class="json-str">"arn:aws:iam::123456789012:role/MyAppRole"</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scenario 4: Read-Only Audit -->
+  <div class="tab-content" id="s4">
+    <div class="scenario-layout">
+      <div class="card">
+        <h3 style="color:var(--aws-orange);margin-bottom:14px">🔍 Auditor assumes read-only role</h3>
+        <ol style="font-size:.85rem;color:var(--muted);padding-left:18px;line-height:2.2">
+          <li>Create <code>SecurityAuditRole</code> in each AWS account</li>
+          <li>Attach AWS managed policy <code>SecurityAudit</code></li>
+          <li>Trust policy: trusts the auditor's home account IAM role</li>
+          <li>Auditor assumes role in each account for max 1 hour</li>
+          <li>All actions logged in CloudTrail under assumed-role session</li>
+          <li>After 1hr session ends — zero residual access</li>
+        </ol>
+        <div class="tip-box">This is the <strong>AWS Organizations "Audit Account"</strong> pattern. One identity, read access to 100+ accounts.</div>
+      </div>
+      <div class="card">
+        <div class="json-block" style="font-size:.78rem">
+<span class="json-anno">// Auditor's permission policy (in home account)</span>
+{
+  <span class="json-key">"Effect"</span>: <span class="json-str">"Allow"</span>,
+  <span class="json-key">"Action"</span>: <span class="json-str">"sts:AssumeRole"</span>,
+  <span class="json-key">"Resource"</span>: <span class="json-str">"arn:aws:iam::*:role/SecurityAuditRole"</span>
+  <span class="json-anno">   ↑ can assume this role in ANY account</span>
+}
+
+<span class="json-anno">// CLI switch to audit role in Account B</span>
+$ aws sts assume-role \
+  --role-arn arn:aws:iam::444455556666:role/SecurityAuditRole \
+  --role-session-name audit-session-2024 \
+  --duration-seconds 3600
+
+<span class="json-anno">// Export returned credentials</span>
+$ export AWS_ACCESS_KEY_ID=...
+$ export AWS_SECRET_ACCESS_KEY=...
+$ export AWS_SESSION_TOKEN=...
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ 7. POLICY EVALUATION LOGIC ══════════════ -->
+<section class="section reveal" id="evaluation">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(255,153,0,.15);color:var(--aws-orange)">⚖️</div>
+    <div>
+      <h2>IAM Policy Evaluation Logic</h2>
+      <p>How AWS decides Allow or Deny for every API call — in order</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start">
+      <div>
+        <h3 style="color:var(--aws-orange);margin-bottom:16px">Evaluation Order</h3>
+        <ol style="font-size:.88rem;padding-left:20px;line-height:2.4">
+          <li><strong>Explicit Deny</strong> in any policy → <span style="color:var(--aws-red)">DENY</span> immediately</li>
+          <li><strong>AWS Organizations SCPs</strong> (if present) must Allow</li>
+          <li><strong>Resource-based policy</strong> Allow → can grant cross-account</li>
+          <li><strong>Identity-based policy</strong> (user/role/group) Allow</li>
+          <li><strong>IAM Permission Boundaries</strong> must Allow</li>
+          <li><strong>Session Policies</strong> (passed at AssumeRole time) must Allow</li>
+          <li>If no explicit Allow found → <span style="color:var(--aws-red)">DENY</span> (implicit)</li>
+        </ol>
+        <div class="tip-box" style="margin-top:16px">
+          <strong>Key Insight:</strong> A Deny anywhere in the chain overrides every Allow. To be granted access, <em>all</em> applicable policy layers must permit the action.
+        </div>
+      </div>
+      <div>
+        <!-- Simplified visual decision tree -->
+        <div style="background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:20px;font-size:.8rem">
+          <div style="text-align:center;margin-bottom:12px">
+            <div style="background:rgba(0,161,201,.12);border:1px solid var(--aws-teal);border-radius:8px;padding:8px 16px;display:inline-block;color:var(--aws-teal);font-weight:700">API Request</div>
+          </div>
+          <!-- Levels -->
+          <div style="display:flex;flex-direction:column;gap:0;align-items:center">
+            <div style="width:2px;height:20px;background:var(--border)"></div>
+            <div style="background:rgba(209,50,18,.1);border:1px solid var(--aws-red);border-radius:8px;padding:7px 14px;text-align:center;width:200px;color:var(--aws-red);font-weight:600">Explicit Deny?</div>
+            <div style="display:flex;gap:40px;align-items:flex-start;margin-top:4px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+                <div style="width:2px;height:20px;background:var(--aws-red)"></div>
+                <div style="background:rgba(209,50,18,.15);border:1px solid var(--aws-red);border-radius:8px;padding:6px 12px;color:var(--aws-red);font-weight:700">❌ DENY</div>
+                <div style="font-size:.7rem;color:var(--muted)">YES</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+                <div style="width:2px;height:20px;background:var(--border)"></div>
+                <div style="background:rgba(255,153,0,.1);border:1px solid var(--aws-orange);border-radius:8px;padding:7px 14px;text-align:center;width:140px;color:var(--aws-orange);font-weight:600;font-size:.75rem">SCP / Identity<br/>Boundary Allow?</div>
+                <div style="font-size:.7rem;color:var(--muted)">NO → continue</div>
+                <div style="display:flex;gap:20px;margin-top:4px">
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+                    <div style="width:2px;height:16px;background:var(--aws-green)"></div>
+                    <div style="background:rgba(26,156,62,.15);border:1px solid var(--aws-green);border-radius:8px;padding:6px 10px;color:var(--aws-green);font-weight:700;font-size:.75rem">✅ ALLOW</div>
+                    <div style="font-size:.7rem;color:var(--muted)">YES</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+                    <div style="width:2px;height:16px;background:var(--border)"></div>
+                    <div style="background:rgba(209,50,18,.15);border:1px solid var(--aws-red);border-radius:8px;padding:6px 10px;color:var(--aws-red);font-weight:700;font-size:.75rem">❌ DENY</div>
+                    <div style="font-size:.7rem;color:var(--muted)">NO (implicit)</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permission Boundary Visual -->
+  <div style="margin-top:28px">
+    <h3 style="margin-bottom:16px;font-size:1.15rem">Permission Boundary — Visual</h3>
+    <div class="perm-visual">
+      <div class="outer-label">Permission Boundary (max allowed)</div>
+      <div style="font-size:.82rem;color:var(--muted);margin-top:20px">e.g. <code>AmazonS3FullAccess, AmazonEC2ReadOnlyAccess</code></div>
+      <div class="perm-inner">
+        <div class="inner-label">Identity Policy (what we tried to grant)</div>
+        <div style="font-size:.8rem;color:var(--muted)">e.g. <code>S3:*, EC2:*, IAM:*</code></div>
+      </div>
+      <div class="perm-effective">
+        <div class="e-label">✅ Effective Permissions (intersection)</div>
+        <ul class="perm-list">
+          <li class="allowed">S3:* — inside boundary ✔</li>
+          <li class="allowed">EC2 Read — inside boundary ✔</li>
+          <li class="denied">EC2 Write — boundary blocks it ✘</li>
+          <li class="denied">IAM:* — boundary blocks it ✘</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ 8. COMPARISON TABLE ══════════════ -->
+<section class="section reveal" id="comparison">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(26,156,62,.15);color:var(--aws-green)">📊</div>
+    <div>
+      <h2>IAM User vs Role — Quick Reference</h2>
+      <p>When to use each identity type</p>
+    </div>
+  </div>
+
+  <div class="card" style="overflow-x:auto">
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>IAM User</th>
+          <th>IAM Role</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Credentials</td><td>Long-term (Access Keys / Password)</td><td>Short-term STS tokens (auto-expire)</td></tr>
+        <tr><td>Best for</td><td>Human console access, legacy apps</td><td>AWS services, CI/CD, cross-account, SSO</td></tr>
+        <tr><td>Rotation</td><td>Manual (should do every 90d)</td><td>Automatic (~1 hr)</td></tr>
+        <tr><td>MFA</td><td>Optional per-user MFA device</td><td>MFA enforced via Condition in trust policy</td></tr>
+        <tr><td>Cross-account</td><td>❌ Users are account-scoped</td><td>✅ Roles can be assumed cross-account</td></tr>
+        <tr><td>Identity federation</td><td>❌ Not directly</td><td>✅ SAML / OIDC / Web Identity</td></tr>
+        <tr><td>AWS service usage</td><td>❌ Hard-code keys (bad)</td><td>✅ EC2 instance profile, Lambda exec role</td></tr>
+        <tr><td>Max per account</td><td>5,000</td><td>1,000 (soft limit, can increase)</td></tr>
+        <tr><td>Audit trail</td><td>CloudTrail: user actions</td><td>CloudTrail: assumed-role session name</td></tr>
+        <tr><td>Recommended for new projects?</td><td>⚠️ Only if no other option</td><td>✅ Always prefer roles</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ 9. CLI / SDK ══════════════ -->
+<section class="section reveal" id="cli">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(0,161,201,.15);color:var(--aws-teal)">💻</div>
+    <div>
+      <h2>CLI &amp; SDK Examples</h2>
+      <p>Real commands you'll use every day working with IAM and AssumeRole</p>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3 style="color:var(--aws-teal);margin-bottom:14px">Create IAM Role (CLI)</h3>
+      <div class="code-block">
+<button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<span class="comment"># 1. Create the role with a trust policy file</span>
+<span class="cmd">aws iam create-role</span> \
+  <span class="flag">--role-name</span> <span class="val">MyAppRole</span> \
+  <span class="flag">--assume-role-policy-document</span> <span class="val">file://trust.json</span>
+
+<span class="comment"># 2. Attach a managed permission policy</span>
+<span class="cmd">aws iam attach-role-policy</span> \
+  <span class="flag">--role-name</span> <span class="val">MyAppRole</span> \
+  <span class="flag">--policy-arn</span> <span class="val">arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess</span>
+
+<span class="comment"># 3. Verify the role</span>
+<span class="cmd">aws iam get-role</span> <span class="flag">--role-name</span> <span class="val">MyAppRole</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--aws-teal);margin-bottom:14px">AssumeRole + Use Credentials</h3>
+      <div class="code-block">
+<button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<span class="comment"># Assume role and get temp credentials</span>
+<span class="cmd">CREDS</span>=$(aws sts assume-role \
+  <span class="flag">--role-arn</span> <span class="val">arn:aws:iam::111122223333:role/DeployRole</span> \
+  <span class="flag">--role-session-name</span> <span class="val">deploy-$(date +%s)</span> \
+  <span class="flag">--query</span> <span class="val">'Credentials'</span> \
+  <span class="flag">--output</span> <span class="val">json</span>)
+
+<span class="comment"># Export the temp credentials</span>
+<span class="cmd">export</span> <span class="val">AWS_ACCESS_KEY_ID</span>=$(echo $CREDS | jq -r .AccessKeyId)
+<span class="cmd">export</span> <span class="val">AWS_SECRET_ACCESS_KEY</span>=$(echo $CREDS | jq -r .SecretAccessKey)
+<span class="cmd">export</span> <span class="val">AWS_SESSION_TOKEN</span>=$(echo $CREDS | jq -r .SessionToken)
+
+<span class="comment"># Verify who you are now</span>
+<span class="cmd">aws sts get-caller-identity</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--aws-teal);margin-bottom:14px">Python boto3 – AssumeRole</h3>
+      <div class="code-block">
+<button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<span class="comment">import boto3</span>
+
+<span class="comment"># Create an STS client</span>
+<span class="cmd">sts</span> = boto3.client(<span class="val">'sts'</span>)
+
+<span class="comment"># Assume the role</span>
+<span class="cmd">response</span> = sts.assume_role(
+    RoleArn=<span class="val">'arn:aws:iam::111122223333:role/MyRole'</span>,
+    RoleSessionName=<span class="val">'my-session'</span>,
+    DurationSeconds=<span class="val">3600</span>
+)
+
+<span class="cmd">creds</span> = response[<span class="val">'Credentials'</span>]
+
+<span class="comment"># Use the temp credentials</span>
+<span class="cmd">s3</span> = boto3.client(
+    <span class="val">'s3'</span>,
+    aws_access_key_id=creds[<span class="val">'AccessKeyId'</span>],
+    aws_secret_access_key=creds[<span class="val">'SecretAccessKey'</span>],
+    aws_session_token=creds[<span class="val">'SessionToken'</span>]
+)
+<span class="cmd">s3</span>.list_buckets()
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--aws-teal);margin-bottom:14px">Terraform – IAM Role &amp; Trust Policy</h3>
+      <div class="code-block">
+<button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<span class="comment"># IAM Role resource</span>
+<span class="cmd">resource</span> <span class="val">"aws_iam_role"</span> <span class="val">"lambda_exec"</span> {
+  name = <span class="val">"lambda-execution-role"</span>
+
+  assume_role_policy = jsonencode({
+    Version = <span class="val">"2012-10-17"</span>
+    Statement = [{
+      Effect    = <span class="val">"Allow"</span>
+      Principal = { Service = <span class="val">"lambda.amazonaws.com"</span> }
+      Action    = <span class="val">"sts:AssumeRole"</span>
+    }]
+  })
+}
+
+<span class="comment"># Attach policy to role</span>
+<span class="cmd">resource</span> <span class="val">"aws_iam_role_policy_attachment"</span> <span class="val">"s3_read"</span> {
+  role       = aws_iam_role.lambda_exec.name
+  policy_arn = <span class="val">"arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"</span>
+}
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- ══════════════ CHEAT SHEET ══════════════ -->
+<section class="section reveal">
+  <div class="section-title">
+    <div class="icon" style="background:rgba(255,153,0,.15);color:var(--aws-orange)">📌</div>
+    <div>
+      <h2>IAM Cheat Sheet</h2>
+      <p>Quick reference for the most important concepts</p>
+    </div>
+  </div>
+
+  <div class="card-grid">
+    <div class="card">
+      <h3 style="color:var(--aws-orange);margin-bottom:12px">Key ARN Formats</h3>
+      <div class="json-block" style="font-size:.8rem">
+<span class="json-anno"># IAM User</span>
+arn:aws:iam::<span class="json-val">123456789012</span>:user/<span class="json-str">alice</span>
+
+<span class="json-anno"># IAM Role</span>
+arn:aws:iam::<span class="json-val">123456789012</span>:role/<span class="json-str">MyRole</span>
+
+<span class="json-anno"># Assumed Role Session</span>
+arn:aws:sts::<span class="json-val">123456789012</span>:assumed-role/<span class="json-str">MyRole</span>/<span class="json-key">session-name</span>
+
+<span class="json-anno"># IAM Policy</span>
+arn:aws:iam::<span class="json-val">123456789012</span>:policy/<span class="json-str">MyPolicy</span>
+
+<span class="json-anno"># AWS Managed Policy</span>
+arn:aws:iam::<span class="json-val">aws</span>:policy/<span class="json-str">ReadOnlyAccess</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--aws-orange);margin-bottom:12px">Most Used IAM Actions</h3>
+      <table style="width:100%;font-size:.82rem;border-collapse:collapse">
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 4px;color:var(--aws-teal)"><code>sts:AssumeRole</code></td>
+          <td style="padding:6px 4px;color:var(--muted)">Get temp creds for a role</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 4px;color:var(--aws-teal)"><code>sts:GetCallerIdentity</code></td>
+          <td style="padding:6px 4px;color:var(--muted)">Who am I? (account/user/role)</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 4px;color:var(--aws-teal)"><code>iam:PassRole</code></td>
+          <td style="padding:6px 4px;color:var(--muted)">Assign a role to a service</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 4px;color:var(--aws-teal)"><code>iam:CreateRole</code></td>
+          <td style="padding:6px 4px;color:var(--muted)">Create a new IAM role</td>
+        </tr>
+        <tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:6px 4px;color:var(--aws-teal)"><code>iam:AttachRolePolicy</code></td>
+          <td style="padding:6px 4px;color:var(--muted)">Attach managed policy to role</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 4px;color:var(--aws-teal)"><code>iam:SimulatePrincipalPolicy</code></td>
+          <td style="padding:6px 4px;color:var(--muted)">Test if a principal can do X</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3 style="color:var(--aws-orange);margin-bottom:12px">Security Best Practices</h3>
+      <ul style="list-style:none;font-size:.85rem;display:flex;flex-direction:column;gap:9px">
+        <li>🔒 Lock down root account — enable MFA, never use daily</li>
+        <li>🎭 Use IAM Roles everywhere (services, humans, CI/CD)</li>
+        <li>🏷 Use ABAC (Attribute-Based AC) for dynamic permissions</li>
+        <li>🔭 Enable AWS CloudTrail + CloudWatch for audit logs</li>
+        <li>📊 Use IAM Access Analyzer to find over-permissive policies</li>
+        <li>🛡 Apply Permission Boundaries on delegated admin roles</li>
+        <li>🔑 Enable SCP at the Org level as a safety net</li>
+        <li>⏱ Use short session durations for sensitive operations</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ FOOTER ══════════════ -->
+<footer>
+  <p>🔶 AWS IAM Deep Dive · Animated Reference Guide</p>
+  <p style="margin-top:8px">
+    <a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/" target="_blank">AWS IAM Docs</a> ·
+    <a href="https://docs.aws.amazon.com/STS/latest/APIReference/" target="_blank">STS API Reference</a> ·
+    <a href="https://policysim.aws.amazon.com/" target="_blank">IAM Policy Simulator</a>
+  </p>
+</footer>
+
+<script>
+  // ── Tab switching ──
+  function switchTrust(btn, id) {
+    document.querySelectorAll('#trust-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('#trust .tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  function switchScenario(btn, id) {
+    btn.closest('section').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    btn.closest('section').querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  // ── Copy code ──
+  function copyCode(btn) {
+    const block = btn.parentElement;
+    const text = block.innerText.replace('Copy\n','').trim();
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+
+  // ── Reveal on scroll ──
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.08 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // ── Animated arrow stagger on arrows ──
+  document.querySelectorAll('.flow-arrow .arrow-anim').forEach((el, i) => {
+    el.style.animationDelay = (i * 0.6) + 's';
+  });
+</script>
+</body>
+</html>
